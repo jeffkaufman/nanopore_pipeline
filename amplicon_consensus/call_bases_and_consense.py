@@ -1,3 +1,4 @@
+
 #!/usr/bin/python3
 
 import sys
@@ -8,35 +9,11 @@ import subprocess
 import shutil
 import argparse
 
-COLORS = {
-  'red': '\033[91m',
-  'green': '\033[92m',
-  'cyan': '\033[96m',
-  'end': '\033[0m',
-}
-
-THISDIR = os.path.abspath(os.path.dirname(__file__))
+from command_line_util import *
 
 # equivalent to "conda activate basecall"
 os.environ["PATH"] = os.pathsep.join([
   "/home/ec2-user/anaconda3/envs/basecall/bin", os.environ["PATH"]])
-
-def print_color(color, msg, file=sys.stdout):
-  print('%s%s%s' % (COLORS[color], msg, COLORS['end']), file=file)
-
-def info(msg):
-  print_color('cyan', msg)
-
-def success(msg):
-  print_color('green', msg)
-
-def die(msg):
-  print_color('red', msg)
-  sys.exit(1)
-
-def run(command):
-  info('\n%s\n' % ' '.join(command))
-  subprocess.check_call(command)
 
 def select_basecall_model(report):
   basecall_models = json.loads(
@@ -87,29 +64,27 @@ def start():
   parser = argparse.ArgumentParser(
     description='Call bases and determine consensus sequences')
   parser.add_argument('--upload-fastq', action='store_true')
-  parser.add_argument('tarfile')
+  parser.add_argument('jobname')
   parser.add_argument('bararr')
   args = parser.parse_args()
 
-  if not args.tarfile.endswith('.tar'):
-    die('expected %s to end with .tar' % args.tarfile)
+  validate_jobname(args.jobname)
 
-  name = os.path.basename(args.tarfile)[:-len('.tar')]
-  if name.startswith('raw-'):
-    name = name[len('raw-'):]
+  tarfile = tarfile_name(args.jobname)
+  if os.path.exists(tarfile):
+    info('tarfile exists; skipping download from s3')
+  else:
+    run(['aws', 's3', 'cp',  s3_url(args.jobname), '.'])
 
-  if not os.path.exists(args.tarfile):
-    die('expected %s to exist' % args.tarfile)
+  if not os.path.exists(args.bararr):
+    die('expected %r to exist' % args.bararr)
 
-  if not args.bararr.endswith('.csv') and not args.bararr.endswith('.tsv'):
-    die('expected %s to end with .csv or .tsv' % args.bararr)
-
-  raw_dir = args.tarfile[:-len('.tar')]
+  raw_dir = args.jobname
   if not os.path.exists(raw_dir):
     os.mkdir(raw_dir)
-    run(['tar', '-xvf', args.tarfile, '-C', raw_dir])
+    run(['tar', '-xvf', tarfile, '-C', raw_dir])
 
-  results_dir = os.path.join(raw_dir, 'results')
+  results_dir = "%sResults" % args.jobname
   if os.path.exists(results_dir):
     info('basecalling results already exist, skipping')
   else:
@@ -137,14 +112,14 @@ def start():
     if not os.path.exists('pass') and not os.path.exists('fail'):
       die('pass and fail directories not found; did basecalling fail?')
 
-    fastq_fname = 'fastq_%s.tgz' % name
+    fastq_fname = 'fastq_%s.tgz' % args.jobname
     if os.path.exists(fastq_fname):
       info('%s already exists; skipping' % fastq_fname)
     else:
       run(['tar', '-czvf', fastq_fname, 'pass', 'fail'])
       upload_public(fastq_fname)
 
-  consensus_fname = 'consensus_%s.fasta' % name
+  consensus_fname = 'consensus_%s.fasta' % args.jobname
   if os.path.exists(consensus_fname):
     info('consensus results already exist, skipping')
   else:
