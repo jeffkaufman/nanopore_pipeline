@@ -15,7 +15,7 @@ COLORS = {
   'end': '\033[0m',
 }
 
-THISDIR = os.path.dirname(__file__)
+THISDIR = os.path.abspath(os.path.dirname(__file__))
 
 def print_color(color, msg, file=sys.stdout):
   print('%s%s%s' % (COLORS[color], msg, COLORS['end']), file=file)
