@@ -106,6 +106,8 @@ def stop_ec2():
 def start():
   parser = argparse.ArgumentParser(
     description='Automate sequencing end to end')
+  # TODO: how should we pass arguments through to call_bases_and_consense.py?
+  # this is currently dropped.
   parser.add_argument('--upload-fastq', action='store_true')
   parser.add_argument('--leave-ec2-running', action='store_true')
   parser.add_argument('jobname')
