@@ -49,9 +49,10 @@ def upload_public(fname):
   if '/' in fname:
     die('%s must be a local path' % fname)
   run(['aws', 's3', 'cp', fname, 's3://ontseq-res-public'])
-  run(['aws', 's3api', 'put-object-acl', '--bucket ontseq-res-public',
+  run(['aws', 's3api', 'put-object-acl', '--bucket', 'ontseq-res-public',
        '--key', fname,
-       '--grant-read uri=http://acs.amazonaws.com/groups/global/AllUsers'])
+       '--grant-read',
+       'uri=http://acs.amazonaws.com/groups/global/AllUsers'])
   
 def call_bases(run_dir, results_dir):
   report_fname, = glob.glob(os.path.join(run_dir, 'report_*.json'))
