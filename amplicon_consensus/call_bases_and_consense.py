@@ -15,6 +15,8 @@ COLORS = {
   'end': '\033[0m',
 }
 
+THISDIR = os.path.dirname(__file__)
+
 def print_color(color, msg, file=sys.stdout):
   print('%s%s%s' % (COLORS[color], msg, COLORS['end']), file=file)
 
@@ -43,6 +45,14 @@ def select_basecall_model(report):
 
   die("Can't identify sup model from %r" % basecall_models)
 
+def upload_public(fname):
+  if '/' in fname:
+    die('%s must be a local path' % fname)
+  run(['aws', 's3', 'cp', fname, 's3://ontseq-res-public'])
+  run(['aws', 's3api', 'put-object-acl', '--bucket ontseq-res-public',
+       '--key', fname,
+       '--grant-read uri=http://acs.amazonaws.com/groups/global/AllUsers'])
+  
 def call_bases(run_dir, results_dir):
   report_fname, = glob.glob(os.path.join(run_dir, 'report_*.json'))
   with open(report_fname) as inf:
@@ -112,7 +122,7 @@ def start():
   else:
     shutil.copyfile(args.bararr, bararr_in_results)
     run([
-      os.path.expanduser('~/julia/bc_csv_to_fasta.py'),
+      os.path.join(THISDIR, 'bc_csv_to_fasta.py'),
       results_dir,
     ])  # creates <results_dir>/samples.csv
 
@@ -127,14 +137,14 @@ def start():
       info('%s already exists; skipping' % fastq_fname)
     else:
       run(['tar', '-czvf', fastq_fname, 'pass', 'fail'])
-      run([os.path.expanduser('~/bin/grantaccess.sh'), fastq_fname])
+      upload_public(fastq_fname)
 
   consensus_fname = 'consensus_%s.fasta' % name
   if os.path.exists(consensus_fname):
     info('consensus results already exist, skipping')
   else:
     run([
-      os.path.expanduser('~/julia/callco.jl'),
+      os.path.join(THISDIR, 'callco.jl'),
       # size selection lower limit
       '--b1', '1000',
       # size selection upper limit
@@ -142,7 +152,7 @@ def start():
       '--out', consensus_fname,
       'pass'])
 
-    run([os.path.expanduser('~/bin/grantaccess.sh'), consensus_fname])
+    upload_public(consensus_fname)
 
   if args.upload_fastq:
     success('fastq results available at '
