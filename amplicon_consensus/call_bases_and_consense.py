@@ -96,6 +96,8 @@ def start():
 
     call_bases(run_dir, results_dir)
 
+  # TODO: if bararr contents don't match we should use the new one and redo the
+  # consensus work
   bararr_in_results = os.path.join(results_dir, 'bararr.csv')
   if os.path.exists(bararr_in_results):
     info('bararr.csv already in output, skipping')
