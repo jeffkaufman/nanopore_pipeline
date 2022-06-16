@@ -17,6 +17,10 @@ COLORS = {
 
 THISDIR = os.path.abspath(os.path.dirname(__file__))
 
+# equivalent to "conda activate basecall"
+os.environ["PATH"] = os.pathsep.join([
+  "/home/ec2-user/anaconda3/envs/basecall/bin", os.environ["PATH"]])
+
 def print_color(color, msg, file=sys.stdout):
   print('%s%s%s' % (COLORS[color], msg, COLORS['end']), file=file)
 
