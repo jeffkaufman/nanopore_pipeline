@@ -34,10 +34,12 @@ explanation and options.
 The program prints information about what it's running in blue and commands it
 runs in magenta.
 
-It untars the results to [jobname] (ex: 220603anj) and then works in
-[jobname]Results (ex: 220603anjResults).
+It untars the results to `[jobname]` (ex: `220603anj`) and then works in
+`[jobname]Results` (ex: `220603anjResults`).
 
 It avoids repeating work by checking if outputs already exist.  If it gets
 that wrong, logging into the EC2 instance and deleting outputs will fix it.
+
+Output can currently appear out of order.
 
 File bugs at https://github.com/jeffkaufman/nanopore_pipeline/issues/new
