@@ -115,7 +115,7 @@ def start():
     '--remote-args',
     help='Arguments to pass through to the the ec2 instance.  Run '
     '"call_bases_and_consense.py --help" to see available options.  Ex: '
-    '--remote-args="--upload-fastq --something-else"')
+    '--remote-args="--upload-fastq --max-length=10000"')
   parser.add_argument(
     '--leave-ec2-running', action='store_true',
     help='By default this script shuts down the ec2 instance when done, but '

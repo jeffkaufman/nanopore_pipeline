@@ -61,10 +61,34 @@ def call_bases(run_dir, results_dir):
     '--arrangements_file', 'bw-3.cfg',
   ])
 
+def validate_consensus(consensus_fname):
+  n_bad = 0
+  n_total = 0
+  with open(consensus_fname) as inf:
+    for line in inf:
+      if line.startswith('>'):
+        n_total += 1
+      elif line.strip() in ['AAAA', 'CCCC']:
+        n_bad += 1
+  if n_bad == n_total:
+    die('Consensus failed.  Do you need to tweak --min-length or '
+        '--max-length?')
+  info('Consensus found results for %s/%s' % (n_total - n_bad, n_total))
+
 def start():
   parser = argparse.ArgumentParser(
     description='Call bases and determine consensus sequences')
-  parser.add_argument('--upload-fastq', action='store_true')
+  parser.add_argument(
+    '--upload-fastq', action='store_true',
+    help='Upload FASTQ files to S3 after basecalling.')
+  parser.add_argument(
+    '--min-length', type=int,
+    default=1000,
+    help='Minimum sequence length to identify during consensus')
+  parser.add_argument(
+    '--max-length', type=int,
+    default=7000,
+    help='Maximum sequence length to identify during consensus')
   parser.add_argument('jobname')
   parser.add_argument('bararr')
   args = parser.parse_args()
@@ -139,17 +163,40 @@ def start():
       upload_public(fastq_fname)
 
   consensus_fname = 'consensus_%s.fasta' % args.jobname
+
+  min_length_fname = 'min_length'
+  max_length_fname = 'max_length'
+  if os.path.exists(consensus_fname) and os.path.exists(min_length_fname):
+      with open(min_length_fname) as inf:
+        if inf.read().strip() != str(args.min_length):
+          info('min_length changed, discarding previous consensus')
+          os.remove(consensus_fname)
+
+  if os.path.exists(consensus_fname) and os.path.exists(max_length_fname):
+    if os.path.exists(max_length_fname):
+      with open(max_length_fname) as inf:
+        if inf.read().strip() != str(args.max_length):
+          info('max_length changed, discarding previous consensus')
+          os.remove(consensus_fname)
+
   if os.path.exists(consensus_fname):
     info('consensus results already exist, skipping')
   else:
+    with open(min_length_fname, 'w') as outf:
+      outf.write(str(args.min_length))
+    with open(max_length_fname, 'w') as outf:
+      outf.write(str(args.max_length))
+
     run([
       os.path.join(THISDIR, 'callco.jl'),
       # size selection lower limit
-      '--b1', '1000',
+      '--b1', str(args.min_length),
       # size selection upper limit
-      '--b2', '7000',
+      '--b2', str(args.max_length),
       '--out', consensus_fname,
       'pass'])
+
+    validate_consensus(consensus_fname)
 
     upload_public(consensus_fname)
 
