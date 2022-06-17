@@ -8,6 +8,7 @@ import os
 import subprocess
 import shutil
 import argparse
+import filecmp
 
 from command_line_util import *
 
@@ -34,7 +35,7 @@ def upload_public(fname):
        '--key', fname,
        '--grant-read',
        'uri=http://acs.amazonaws.com/groups/global/AllUsers'])
-  
+
 def call_bases(run_dir, results_dir):
   report_fname, = glob.glob(os.path.join(run_dir, 'report_*.json'))
   with open(report_fname) as inf:
@@ -69,22 +70,33 @@ def start():
   args = parser.parse_args()
 
   validate_jobname(args.jobname)
-
-  tarfile = tarfile_name(args.jobname)
-  if os.path.exists(tarfile):
-    info('tarfile exists; skipping download from s3')
-  else:
-    run(['aws', 's3', 'cp',  s3_url(args.jobname), '.'])
-
   if not os.path.exists(args.bararr):
     die('expected %r to exist' % args.bararr)
 
+  bararr = os.path.abspath(args.bararr)
+
+  tarfile = tarfile_name(args.jobname)
+  tarfile_prev = tarfile + ".prev"
+  if os.path.exists(tarfile):
+    os.replace(tarfile, tarfile_prev)
+
+  run(['aws', 's3', 'cp',  s3_url(args.jobname), '.'])
+
   raw_dir = args.jobname
+  results_dir = os.path.abspath("%sResults" % args.jobname)
+
+  if os.path.exists(tarfile_prev):
+    if not filecmp.cmp(tarfile, tarfile_prev):
+      info('tarfile changed, will redo any steps from before')
+      if os.path.exists(raw_dir):
+        shutil.rmtree(raw_dir)
+      if os.path.exists(results_dir):
+        shutil.rmtree(results_dir)
+
   if not os.path.exists(raw_dir):
     os.mkdir(raw_dir)
     run(['tar', '-xvf', tarfile, '-C', raw_dir])
 
-  results_dir = "%sResults" % args.jobname
   if os.path.exists(results_dir):
     info('basecalling results already exist, skipping')
   else:
@@ -95,18 +107,6 @@ def start():
     run_dir = os.path.dirname(report_fname)
 
     call_bases(run_dir, results_dir)
-
-  # TODO: if bararr contents don't match we should use the new one and redo the
-  # consensus work
-  bararr_in_results = os.path.join(results_dir, 'bararr.csv')
-  if os.path.exists(bararr_in_results):
-    info('bararr.csv already in output, skipping')
-  else:
-    shutil.copyfile(args.bararr, bararr_in_results)
-    run([
-      os.path.join(THISDIR, 'bc_csv_to_fasta.py'),
-      results_dir,
-    ])  # creates <results_dir>/samples.csv
 
   os.chdir(results_dir)
 
@@ -122,6 +122,24 @@ def start():
       upload_public(fastq_fname)
 
   consensus_fname = 'consensus_%s.fasta' % args.jobname
+  bararr_in_results = 'bararr.csv'
+
+  if os.path.exists(bararr_in_results):
+    if filecmp.cmp(bararr, bararr_in_results):
+      info('bararr already in output and unchanged, skipping')
+    else:
+      os.remove(bararr_in_results)
+      if os.path.exists(consensus_fname):
+        info('bararr changed, will re-run consensus')
+        os.remove(consensus_fname)
+
+  if not os.path.exists(bararr_in_results):
+    shutil.copyfile(bararr, bararr_in_results)
+    run([
+      os.path.join(THISDIR, 'bc_csv_to_fasta.py'),
+      results_dir,
+    ])  # creates <results_dir>/samples.csv
+
   if os.path.exists(consensus_fname):
     info('consensus results already exist, skipping')
   else:
