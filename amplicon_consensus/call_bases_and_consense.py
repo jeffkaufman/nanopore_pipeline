@@ -47,7 +47,7 @@ def call_bases(run_dir, results_dir):
     os.path.expanduser('~/ont-guppy/bin/guppy_basecaller'),
     '-i', os.path.join(run_dir, 'fast5/'),
     '-s', results_dir,
-    '-c', os.path.join('ont-guppy/data', basecall_model),
+    '-c', os.path.join(os.path.expanduser('~/ont-guppy/data'), basecall_model),
     '--gpu_runners_per_device', '1',
     '--num_callers', '1',
     '--cpu_threads_per_caller', '8',
@@ -73,7 +73,7 @@ def start():
   if not os.path.exists(args.bararr):
     die('expected %r to exist' % args.bararr)
 
-  bararr = os.path.abspath(args.bararr)
+  bararr_in = os.path.abspath(args.bararr)
 
   tarfile = tarfile_name(args.jobname)
   tarfile_prev = tarfile + ".prev"
@@ -82,7 +82,7 @@ def start():
 
   run(['aws', 's3', 'cp',  s3_url(args.jobname), '.'])
 
-  raw_dir = args.jobname
+  raw_dir = os.path.abspath(args.jobname)
   results_dir = os.path.abspath("%sResults" % args.jobname)
 
   if os.path.exists(tarfile_prev):
@@ -97,18 +97,35 @@ def start():
     os.mkdir(raw_dir)
     run(['tar', '-xvf', tarfile, '-C', raw_dir])
 
-  if os.path.exists(results_dir):
-    info('basecalling results already exist, skipping')
-  else:
-    os.mkdir(results_dir)
+  bararr_in_results = os.path.join(results_dir, 'bararr.csv')
+  if not os.path.exists(bararr_in_results) or not filecmp.cmp(
+      bararr_in, bararr_in_results):
+    info('bararr changed, discarding previous %s' % (
+      os.path.basename(results_dir)))
+    shutil.rmtree(results_dir)
 
+  if not os.path.exists(results_dir):
+    os.mkdir(results_dir)
+    shutil.copyfile(bararr_in, bararr_in_results)
+
+  os.chdir(results_dir)
+  run([
+    os.path.join(THISDIR, 'bc_csv_to_fasta.py'),
+    results_dir,
+  ])  # creates <results_dir>/samples.csv
+
+  if not os.path.exists('pass'):
     report_fname, = glob.glob(os.path.join(raw_dir, '**/report_*.json'),
                               recursive=True)
     run_dir = os.path.dirname(report_fname)
 
     call_bases(run_dir, results_dir)
 
-  os.chdir(results_dir)
+  result_dirs = [x for x in glob.glob("pass/*")]
+  if not result_dirs or result_dirs == ['pass/unclassified']:
+    os.remove(bararr_in_results)  # so we don't think basecalling succeeded
+    die('demuxing failed: all outputs are unclassified.  Is this the right '
+        'barcode metadata file?')
 
   if args.upload_fastq:
     if not os.path.exists('pass') and not os.path.exists('fail'):
@@ -122,24 +139,6 @@ def start():
       upload_public(fastq_fname)
 
   consensus_fname = 'consensus_%s.fasta' % args.jobname
-  bararr_in_results = 'bararr.csv'
-
-  if os.path.exists(bararr_in_results):
-    if filecmp.cmp(bararr, bararr_in_results):
-      info('bararr already in output and unchanged, skipping')
-    else:
-      os.remove(bararr_in_results)
-      if os.path.exists(consensus_fname):
-        info('bararr changed, will re-run consensus')
-        os.remove(consensus_fname)
-
-  if not os.path.exists(bararr_in_results):
-    shutil.copyfile(bararr, bararr_in_results)
-    run([
-      os.path.join(THISDIR, 'bc_csv_to_fasta.py'),
-      results_dir,
-    ])  # creates <results_dir>/samples.csv
-
   if os.path.exists(consensus_fname):
     info('consensus results already exist, skipping')
   else:

@@ -4,6 +4,7 @@ import sys
 import argparse
 import re
 import time
+import os
 
 from command_line_util import *
 
@@ -58,7 +59,7 @@ def ec2_status():
   output = run_on_sequencing_desktop(
     'aws ec2 describe-instance-status --instance-id i-0213be8d87b18ef2c',
     capture_output=True)
-  #print(output.decode('utf-8'))
+  # print(output.decode('utf-8'))
   return parse_aws_output(output, 'Status', fallback='stopped')
 
 def start_ec2():
