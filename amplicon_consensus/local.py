@@ -92,12 +92,12 @@ def ec2_address():
 def run_on_ec2(cmd, **kwargs):
   return run(['ssh', ec2_address(), cmd], **kwargs)
 
-def process_on_ec2(jobname, bararr):
+def process_on_ec2(jobname, bararr, remote_args):
   remote_bararr_name = '%s.bararr' % jobname
   run(['scp', bararr, '%s:%s' % (ec2_address(), remote_bararr_name)])
   run_on_ec2(
     'python3 nanopore_pipeline/amplicon_consensus/call_bases_and_consense.py'
-    ' %s %s' % (jobname, remote_bararr_name))
+    ' %s %s %s' % (jobname, remote_bararr_name, remote_args))
 
 def stop_ec2():
   info("stopping ec2 instance...")
@@ -110,9 +110,11 @@ def stop_ec2():
 def start():
   parser = argparse.ArgumentParser(
     description='Automate sequencing end to end')
-  # TODO: how should we pass arguments through to call_bases_and_consense.py?
-  # this is currently dropped.
-  parser.add_argument('--upload-fastq', action='store_true')
+  parser.add_argument(
+    '--remote-args',
+    help='Arguments to pass through to the the ec2 instance.  Run '
+    '"call_bases_and_consense.py --help" to see available options.  Ex: '
+    '--remote-args="--upload-fastq --something-else"')
   parser.add_argument(
     '--leave-ec2-running', action='store_true',
     help='By default this script shuts down the ec2 instance when done, but '
@@ -135,7 +137,7 @@ def start():
   copy_raw_data_to_s3(args.jobname, args.force_upload)
   try:
     start_ec2()
-    process_on_ec2(args.jobname, args.bararr)
+    process_on_ec2(args.jobname, args.bararr, args.remote_args or "")
   finally:
     if not args.leave_ec2_running:
       stop_ec2()
