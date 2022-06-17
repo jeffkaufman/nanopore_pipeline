@@ -100,14 +100,14 @@ def start():
   bararr_in = os.path.abspath(args.bararr)
 
   tarfile = tarfile_name(args.jobname)
-  tarfile_prev = tarfile + ".prev"
+  tarfile_prev = tarfile + '.prev'
   if os.path.exists(tarfile):
     os.replace(tarfile, tarfile_prev)
 
   run(['aws', 's3', 'cp',  s3_url(args.jobname), '.'])
 
   raw_dir = os.path.abspath(args.jobname)
-  results_dir = os.path.abspath("%sResults" % args.jobname)
+  results_dir = os.path.abspath('%sResults' % args.jobname)
 
   if os.path.exists(tarfile_prev):
     if not filecmp.cmp(tarfile, tarfile_prev):
@@ -145,7 +145,7 @@ def start():
 
     call_bases(run_dir, results_dir)
 
-  result_dirs = [x for x in glob.glob("pass/*")]
+  result_dirs = [x for x in glob.glob('pass/*')]
   if not result_dirs or result_dirs == ['pass/unclassified']:
     os.remove(bararr_in_results)  # so we don't think basecalling succeeded
     die('demuxing failed: all outputs are unclassified.  Is this the right '
