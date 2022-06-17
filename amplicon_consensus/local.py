@@ -27,7 +27,7 @@ def copy_raw_data_to_s3(jobname, force_upload):
       return
 
   run_on_sequencing_desktop(
-    'cd minknow/data/ && tar -cf - %s |'
+    'set -o pipefail && cd minknow/data/ && tar -cf - %s |'
     ' aws s3 cp - %s' % (jobname, s3_url(jobname)))
 
 def parse_aws_output(output, key, fallback=None):
