@@ -9,7 +9,7 @@ import os
 from command_line_util import *
 
 def run_on_sequencing_desktop(cmd, **kwargs):
-  return run(['ssh', 'summer@10.114.5.117', '-p', '64355', cmd], **kwargs)
+  return run(['ssh', 'summer@10.114.0.70', '-p', '64355', cmd], **kwargs)
 
 def s3_contains_object(s3_url):
   try:
