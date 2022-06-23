@@ -140,8 +140,12 @@ def start():
   ])  # creates <results_dir>/samples.csv
 
   if not os.path.exists('pass'):
-    report_fname, = glob.glob(os.path.join(raw_dir, '**/report_*.json'),
-                              recursive=True)
+    try:
+      report_fname, = glob.glob(os.path.join(raw_dir, '**/report_*.json'),
+                                recursive=True)
+    except ValueError:
+      die('No report*.json file -- has this run completed?')
+
     run_dir = os.path.dirname(report_fname)
 
     call_bases(run_dir, results_dir)
