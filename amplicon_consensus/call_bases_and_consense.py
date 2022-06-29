@@ -122,8 +122,9 @@ def start():
     run(['tar', '-xvf', tarfile, '-C', raw_dir])
 
   bararr_in_results = os.path.join(results_dir, 'bararr.csv')
-  if not os.path.exists(bararr_in_results) or not filecmp.cmp(
-      bararr_in, bararr_in_results):
+  if os.path.exists(results_dir) and (
+      not os.path.exists(bararr_in_results) or not filecmp.cmp(
+        bararr_in, bararr_in_results)):
     info('bararr changed, discarding previous %s' % (
       os.path.basename(results_dir)))
     shutil.rmtree(results_dir)
@@ -139,8 +140,12 @@ def start():
   ])  # creates <results_dir>/samples.csv
 
   if not os.path.exists('pass'):
-    report_fname, = glob.glob(os.path.join(raw_dir, '**/report_*.json'),
-                              recursive=True)
+    try:
+      report_fname, = glob.glob(os.path.join(raw_dir, '**/report_*.json'),
+                                recursive=True)
+    except ValueError:
+      die('No report*.json file -- has this run completed?')
+
     run_dir = os.path.dirname(report_fname)
 
     call_bases(run_dir, results_dir)
