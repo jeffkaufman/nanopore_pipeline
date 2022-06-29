@@ -93,12 +93,22 @@ def ec2_address():
 def run_on_ec2(cmd, **kwargs):
   return run(['ssh', ec2_address(), cmd], **kwargs)
 
-def process_on_ec2(jobname, bararr, remote_args):
-  remote_bararr_name = '%s.bararr' % jobname
-  run(['scp', bararr, '%s:%s' % (ec2_address(), remote_bararr_name)])
+def process_on_ec2(args):
+  remote_indexing_barcodes_name = '%s.bararr' % args.jobname
+  run(['scp', args.indexing_barcodes, '%s:%s' % (
+    ec2_address(), remote_indexing_barcodes_name)])
+
+  remote_sequencing_barcodes_name = None
+  if args.sequencing_barcodes:
+    remote_sequencing_barcodes_name = '%s.sequencing_barcodes' % args.jobname
+    run(['scp', args.sequencing_barcodes, '%s:%s' % (
+      ec2_address(), remote_sequencing_barcodes_name)])
+    args.remote_args += (
+      ' --sequencing-barcodes %s' % remote_sequencing_barcodes_name)
+
   run_on_ec2(
-    'python3 nanopore_pipeline/amplicon_consensus/call_bases_and_consense.py'
-    ' %s %s %s' % (jobname, remote_bararr_name, remote_args))
+    'python3 nanopore_pipeline/remote.py'
+    ' %s %s %s' % (args.jobname, remote_indexing_barcodes_name, args.remote_args))
 
 def stop_ec2():
   info("stopping ec2 instance...")
@@ -114,7 +124,7 @@ def start():
   parser.add_argument(
     '--remote-args',
     help='Arguments to pass through to the the ec2 instance.  Run '
-    '"call_bases_and_consense.py --help" to see available options.  Ex: '
+    '"remote.py --help" to see available options.  Ex: '
     '--remote-args="--upload-fastq --max-length=10000"')
   parser.add_argument(
     '--leave-ec2-running', action='store_true',
@@ -125,20 +135,32 @@ def start():
     '--force-upload', action='store_true',
     help='Upload to s3 even if there are already results uploaded under this '
     'name.  Use when incrementally processing sequencer output.')
+  parser.add_argument(
+    '--sequencing-barcodes', metavar='FNAME',
+    help='If present, use these barcodes to determine distribution of tracers')
+  parser.add_argument('--determine-consensus', action='store_true')
   parser.add_argument('jobname', help='experiment name, ex: 220603anj')
   parser.add_argument(
-    'bararr', help='filename for barcode metadata in tab-delimited format.')
+    'indexing_barcodes',
+    help='filename for barcode metadata in tab-delimited format.')
   args = parser.parse_args()
 
   validate_jobname(args.jobname)
 
-  if not os.path.exists(args.bararr):
-    die('expected %r to exist' % args.bararr)
+  if not os.path.exists(args.indexing_barcodes):
+    die('expected %r to exist' % args.indexing_barcodes)
+
+  args.remote_args = args.remote_args or ''
+
+  if args.force_upload:
+    args.remote_args += ' --force-download'
+  if args.determine_consensus:
+    args.remote_args += ' --determine-consensus'
 
   copy_raw_data_to_s3(args.jobname, args.force_upload)
   try:
     start_ec2()
-    process_on_ec2(args.jobname, args.bararr, args.remote_args or "")
+    process_on_ec2(args)
   finally:
     if not args.leave_ec2_running:
       stop_ec2()

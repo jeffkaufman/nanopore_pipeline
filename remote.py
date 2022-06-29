@@ -89,22 +89,30 @@ def start():
     '--max-length', type=int,
     default=7000,
     help='Maximum sequence length to identify during consensus')
+  parser.add_argument(
+    '--force-download', action='store_true',
+    help='Download from s3 even if there is already a tarball present.')
+  parser.add_argument('--sequencing-barcodes', metavar='FNAME')
+  parser.add_argument('--determine-consensus', action='store_true')
+
   parser.add_argument('jobname')
-  parser.add_argument('bararr')
+  parser.add_argument('indexing_barcodes')
   args = parser.parse_args()
 
   validate_jobname(args.jobname)
-  if not os.path.exists(args.bararr):
-    die('expected %r to exist' % args.bararr)
+  if not os.path.exists(args.indexing_barcodes):
+    die('expected %r to exist' % args.indexing_barcodes)
 
-  bararr_in = os.path.abspath(args.bararr)
+  indexing_barcodes_in = os.path.abspath(args.indexing_barcodes)
 
   tarfile = tarfile_name(args.jobname)
-  tarfile_prev = tarfile + '.prev'
-  if os.path.exists(tarfile):
-    os.replace(tarfile, tarfile_prev)
 
-  run(['aws', 's3', 'cp',  s3_url(args.jobname), '.'])
+  tarfile_prev = tarfile + '.prev'
+  if not os.path.exists(tarfile) or args.force_download:
+    if os.path.exists(tarfile):
+      os.replace(tarfile, tarfile_prev)
+
+    run(['aws', 's3', 'cp',  s3_url(args.jobname), '.'])
 
   raw_dir = os.path.abspath(args.jobname)
   results_dir = os.path.abspath('%sResults' % args.jobname)
@@ -121,17 +129,27 @@ def start():
     os.mkdir(raw_dir)
     run(['tar', '-xvf', tarfile, '-C', raw_dir])
 
-  bararr_in_results = os.path.join(results_dir, 'bararr.csv')
+  indexing_barcodes_in_results = os.path.join(results_dir, 'bararr.csv')
   if os.path.exists(results_dir) and (
-      not os.path.exists(bararr_in_results) or not filecmp.cmp(
-        bararr_in, bararr_in_results)):
-    info('bararr changed, discarding previous %s' % (
-      os.path.basename(results_dir)))
+      not os.path.exists(indexing_barcodes_in_results) or not filecmp.cmp(
+        indexing_barcodes_in, indexing_barcodes_in_results)):
+    info('new indexing_barcodes')
     shutil.rmtree(results_dir)
+
+  sequencing_barcodes_in_results = os.path.join(
+    results_dir, 'sequencing_barcodes')
+  tracer_table = os.path.join(results_dir, 'tracer_table.tsv')
+  if args.sequencing_barcodes:
+    if not os.path.exists(sequencing_barcodes_in_results) or not filecmp.cmp(
+        args.sequencing_barcodes, sequencing_barcodes_in_results):
+      info('new tracer ids')
+      shutil.copyfile(args.sequencing_barcodes, sequencing_barcodes_in_results)
+      if os.path.exists(tracer_table):
+        os.remove(tracer_table)
 
   if not os.path.exists(results_dir):
     os.mkdir(results_dir)
-    shutil.copyfile(bararr_in, bararr_in_results)
+    shutil.copyfile(indexing_barcodes_in, indexing_barcodes_in_results)
 
   os.chdir(results_dir)
   run([
@@ -152,11 +170,21 @@ def start():
 
   result_dirs = [x for x in glob.glob('pass/*')]
   if not result_dirs or result_dirs == ['pass/unclassified']:
-    os.remove(bararr_in_results)  # so we don't think basecalling succeeded
+    # so we don't think basecalling succeeded
+    os.remove(indexing_barcodes_in_results)
     die('demuxing failed: all outputs are unclassified.  Is this the right '
         'barcode metadata file?')
 
   if args.upload_fastq:
+    upload_fastq()
+
+  if args.determine_consensus:
+    determine_consensus(args)
+
+  if args.sequencing_barcodes:
+    determine_tracer_composition(results_dir, tracer_table)
+
+def upload_fastq():
     if not os.path.exists('pass') and not os.path.exists('fail'):
       die('pass and fail directories not found; did basecalling fail?')
 
@@ -167,6 +195,10 @@ def start():
       run(['tar', '-czvf', fastq_fname, 'pass', 'fail'])
       upload_public(fastq_fname)
 
+    success('fastq results available at '
+            'https://ontseq-res-public.s3.amazonaws.com/%s' % fastq_fname)
+
+def determine_consensus(args):
   consensus_fname = 'consensus_%s.fasta' % args.jobname
 
   min_length_fname = 'min_length'
@@ -193,7 +225,7 @@ def start():
       outf.write(str(args.max_length))
 
     run([
-      os.path.join(THISDIR, 'callco.jl'),
+      os.path.join(THISDIR, 'amplicon_consensus', 'callco.jl'),
       # size selection lower limit
       '--b1', str(args.min_length),
       # size selection upper limit
@@ -205,12 +237,20 @@ def start():
 
     upload_public(consensus_fname)
 
-  if args.upload_fastq:
-    success('fastq results available at '
-            'https://ontseq-res-public.s3.amazonaws.com/%s' % fastq_fname)
-
   success('consensus results available at '
           'https://ontseq-res-public.s3.amazonaws.com/%s' % consensus_fname)
+
+def determine_tracer_composition(results_dir, tracer_table):
+  tracer_jsons = os.path.join(results_dir, 'tracer_scores.jsons')
+  if not os.path.exists(tracer_table):
+    run([
+      os.path.join(THISDIR, 'amplicon_tracers/determine_matches.py'),
+      tracer_jsons])
+    run([
+      os.path.join(THISDIR, 'amplicon_tracers/make_table.py'),
+      tracer_jsons, tracer_table])
+    # TODO put on s3
+  success('tracers processed')
 
 if __name__ == '__main__':
   start()
