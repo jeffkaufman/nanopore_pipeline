@@ -44,10 +44,8 @@ def start():
         internal_open_gap_score = -5,
         internal_extend_gap_score = -2)
 
-    # barcode id -> { tracer id -> [score] }
-    results = {}
-    for barcode in barcodes.values():
-        results[barcode.barcode_id] = defaultdict(list)
+    # barcode id -> { tracer id -> { score -> count }}
+    results = defaultdict(lambda : defaultdict(lambda : defaultdict(int)))
 
     for fname in glob.glob("pass/bw*/*.fastq"):
         with open(fname) as inf:
@@ -91,8 +89,8 @@ def handle_record(fname, record, barcodes, tracers, aligner, results):
         return
 
     for tracer_id, tracer_seq in tracers:
-        results[barcode.barcode_id][tracer_id].append(
-            aligner.score(seq, tracer_seq))
+        results[barcode.barcode_id][tracer_id][
+            int(aligner.score(seq, tracer_seq))] += 1
 
 if __name__ == "__main__":
     start()
