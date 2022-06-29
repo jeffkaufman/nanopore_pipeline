@@ -6,6 +6,7 @@ from Bio import SeqIO
 from Bio.Seq import Seq
 from Bio.SeqIO import SeqRecord
 import json
+import sys
 
 Barcode = namedtuple('Barcode', ['barcode_id', 'fwd', 'rev'])
 
@@ -31,7 +32,7 @@ def parse_tracers():
         ["tr2", "AGCGCCTAACGCCGCTCCTTTCGCTTTCTTCCCTTT"],
     ] # FIXME these are made up
 
-def start():
+def start(fnames):
     barcodes = parse_barcodes()
     tracers = parse_tracers()
 
@@ -44,18 +45,11 @@ def start():
         internal_open_gap_score = -5,
         internal_extend_gap_score = -2)
 
-    # barcode id -> { tracer id -> { score -> count }}
-    results = defaultdict(lambda : defaultdict(lambda : defaultdict(int)))
-
-    for fname in glob.glob("pass/bw*/*.fastq"):
+    for fname in fnames:
         with open(fname) as inf:
             records = SeqIO.parse(inf, 'fastq')
             for record in records:
-                handle_record(fname, record, barcodes, tracers, aligner, results)
-
-    with open("tracer-matches.json", "w") as outf:
-        # if this gets too big we can easily shard by sequencing barcode
-        outf.write(json.dumps(results))
+                handle_record(fname, record, barcodes, tracers, aligner)
 
 def orient(record, barcode, aligner):
     fwd_score = aligner.score(record.seq, barcode.fwd) + aligner.score(
@@ -79,7 +73,7 @@ def trim_barcodes(record, barcode, aligner):
     seq = seq[:rev_alignment.aligned[0][0][0]]
     return seq
 
-def handle_record(fname, record, barcodes, tracers, aligner, results):
+def handle_record(fname, record, barcodes, tracers, aligner):
     guppy_barcode = record.description.split()[-1].removeprefix("barcode=")
     barcode = barcodes[guppy_barcode]
 
@@ -88,9 +82,10 @@ def handle_record(fname, record, barcodes, tracers, aligner, results):
     if not seq:
         return
 
+    result = [barcode.barcode_id]
     for tracer_id, tracer_seq in tracers:
-        results[barcode.barcode_id][tracer_id][
-            int(aligner.score(seq, tracer_seq))] += 1
+        result.append(int(aligner.score(seq, tracer_seq)))
+    print(json.dumps(result))
 
 if __name__ == "__main__":
-    start()
+    start(sys.argv[1:])
